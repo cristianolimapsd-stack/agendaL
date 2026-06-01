@@ -4,12 +4,15 @@ import { useState, useEffect } from 'react'
 import { supabase, Appointment } from '@/lib/supabase'
 import {
   format, startOfMonth, endOfMonth, eachDayOfInterval,
-  isSameDay, isSameMonth, addMonths, subMonths, parseISO
+  isSameDay, addMonths, subMonths
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, X, Clock, User, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react'
 
-const TYPES = [
+type AptType = 'consulta' | 'retorno' | 'emergencia' | 'limpeza' | 'outro'
+type AptStatus = 'scheduled' | 'completed' | 'cancelled'
+
+const TYPES: { value: AptType; label: string; color: string }[] = [
   { value: 'consulta', label: 'Consulta', color: '#4a6fa5' },
   { value: 'retorno', label: 'Retorno', color: '#5a825a' },
   { value: 'emergencia', label: 'Emergência', color: '#dc2626' },
@@ -17,10 +20,21 @@ const TYPES = [
   { value: 'outro', label: 'Outro', color: '#7a4ab0' },
 ]
 
-const EMPTY_APT = {
+interface FormState {
+  patient_name: string
+  title: string
+  date: string
+  time: string
+  duration: number
+  type: AptType
+  notes: string
+  status: AptStatus
+}
+
+const EMPTY_APT: FormState = {
   patient_name: '', title: '', date: format(new Date(), 'yyyy-MM-dd'),
-  time: '08:00', duration: 30, type: 'consulta' as const,
-  notes: '', status: 'scheduled' as const,
+  time: '08:00', duration: 30, type: 'consulta',
+  notes: '', status: 'scheduled',
 }
 
 export default function CalendarPage() {
@@ -29,7 +43,7 @@ export default function CalendarPage() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [showForm, setShowForm] = useState(false)
   const [selectedApt, setSelectedApt] = useState<Appointment | null>(null)
-  const [form, setForm] = useState({ ...EMPTY_APT })
+  const [form, setForm] = useState<FormState>({ ...EMPTY_APT })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadAppointments() }, [currentMonth])
@@ -71,9 +85,14 @@ export default function CalendarPage() {
 
   function openEdit(a: Appointment) {
     setForm({
-      patient_name: a.patient_name, title: a.title, date: a.date,
-      time: a.time, duration: a.duration, type: a.type,
-      notes: a.notes || '', status: a.status,
+      patient_name: a.patient_name,
+      title: a.title,
+      date: a.date,
+      time: a.time,
+      duration: a.duration,
+      type: a.type as AptType,
+      notes: a.notes || '',
+      status: a.status as AptStatus,
     })
     setSelectedApt(a)
     setShowForm(true)
@@ -96,7 +115,6 @@ export default function CalendarPage() {
       <div className="safe-top px-4 pt-2 pb-2 flex-shrink-0">
         <h1 className="text-xl font-bold mb-3" style={{ fontFamily: 'Georgia, serif' }}>Agenda</h1>
 
-        {/* Month nav */}
         <div className="card p-3 mb-3">
           <div className="flex items-center justify-between mb-3">
             <button onClick={() => setCurrentMonth(m => subMonths(m, 1))} className="p-1 press-effect">
@@ -110,14 +128,12 @@ export default function CalendarPage() {
             </button>
           </div>
 
-          {/* Day headers */}
           <div className="grid grid-cols-7 mb-1">
             {['D','S','T','Q','Q','S','S'].map((d, i) => (
               <div key={i} className="calendar-day text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{d}</div>
             ))}
           </div>
 
-          {/* Days grid */}
           <div className="grid grid-cols-7">
             {Array.from({ length: startDow }).map((_, i) => <div key={`empty-${i}`} />)}
             {days.map(day => {
@@ -147,7 +163,6 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Day appointments */}
       <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-sm capitalize" style={{ color: 'var(--text-secondary)' }}>
@@ -170,7 +185,7 @@ export default function CalendarPage() {
               return (
                 <button key={apt.id} onClick={() => openEdit(apt)} className="card w-full p-4 text-left press-effect flex gap-3">
                   <div className="flex-shrink-0 flex flex-col items-center w-14">
-                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{apt.time}</span>
+                    <span className="text-sm font-bold">{apt.time}</span>
                     <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{apt.duration}min</span>
                   </div>
                   <div className="w-0.5 rounded-full flex-shrink-0 self-stretch" style={{ background: typeInfo?.color || 'var(--accent)' }} />
@@ -182,7 +197,6 @@ export default function CalendarPage() {
                       </span>
                     </div>
                     {apt.title && <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{apt.title}</p>}
-                    {apt.notes && <p className="text-xs truncate mt-0.5" style={{ color: '#9ca3af' }}>{apt.notes}</p>}
                   </div>
                 </button>
               )
@@ -191,7 +205,6 @@ export default function CalendarPage() {
         )}
       </div>
 
-      {/* Form */}
       {showForm && (
         <>
           <div className="overlay" onClick={closeForm} />
@@ -225,7 +238,7 @@ export default function CalendarPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Tipo</label>
                 <div className="flex flex-wrap gap-2">
                   {TYPES.map(t => (
-                    <button key={t.value} onClick={() => setForm(f => ({ ...f, type: t.value as any }))}
+                    <button key={t.value} onClick={() => setForm(f => ({ ...f, type: t.value }))}
                       className="badge press-effect"
                       style={{ background: form.type === t.value ? t.color : '#f5f5f7', color: form.type === t.value ? 'white' : 'var(--text-secondary)', fontSize: 12, padding: '6px 12px' }}>
                       {t.label}
