@@ -16,15 +16,23 @@ const CATEGORIES = [
   { value: 'evening', label: '🌙 Noite', color: '#ede9fe', textColor: '#5b21b6' },
 ]
 
-const EMPTY_ROUTINE = {
-  title: '', time: '', days: DAYS_FULL, category: 'morning' as const, completed_today: false
+type RoutineForm = {
+  title: string
+  time: string
+  days: string[]
+  category: 'morning' | 'work' | 'health' | 'evening'
+  completed_today: boolean
+}
+
+const EMPTY_ROUTINE: RoutineForm = {
+  title: '', time: '', days: DAYS_FULL, category: 'morning', completed_today: false
 }
 
 export default function RoutinePage() {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState<Routine | null>(null)
-  const [form, setForm] = useState({ ...EMPTY_ROUTINE })
+  const [form, setForm] = useState<RoutineForm>({ ...EMPTY_ROUTINE })
   const [saving, setSaving] = useState(false)
   const todayDow = new Date().getDay()
   const todayName = DAYS_FULL[todayDow]
@@ -183,7 +191,7 @@ export default function RoutinePage() {
                 <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Categoria</label>
                 <div className="grid grid-cols-2 gap-2">
                   {CATEGORIES.map(c => (
-                    <button key={c.value} onClick={() => setForm(f => ({ ...f, category: c.value as any }))}
+                    <button key={c.value} onClick={() => setForm(f => ({ ...f, category: c.value as RoutineForm['category'] }))}
                       className="p-2 rounded-xl text-sm font-medium press-effect"
                       style={{ background: form.category === c.value ? c.color : '#f5f5f7', color: form.category === c.value ? c.textColor : 'var(--text-secondary)', border: form.category === c.value ? `1.5px solid ${c.textColor}40` : '1.5px solid transparent' }}>
                       {c.label}
