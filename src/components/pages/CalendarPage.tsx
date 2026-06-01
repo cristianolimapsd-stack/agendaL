@@ -7,7 +7,7 @@ import {
   isSameDay, addMonths, subMonths
 } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
-import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, Check } from 'lucide-react'
 
 type AptType = 'consulta' | 'retorno' | 'emergencia' | 'limpeza' | 'outro'
 type AptStatus = 'scheduled' | 'completed' | 'cancelled'
@@ -77,6 +77,12 @@ export default function CalendarPage() {
     closeForm()
   }
 
+  async function toggleComplete(apt: Appointment) {
+    const newStatus: AptStatus = apt.status === 'completed' ? 'scheduled' : 'completed'
+    await supabase.from('appointments').update({ status: newStatus }).eq('id', apt.id)
+    setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, status: newStatus } : a))
+  }
+
   function openNew() {
     setForm({ ...EMPTY_APT, date: format(selectedDate, 'yyyy-MM-dd') })
     setSelectedApt(null)
@@ -107,34 +113,34 @@ export default function CalendarPage() {
   const startDow = startOfMonth(currentMonth).getDay()
   const dayApts = appointments.filter(a => a.date === format(selectedDate, 'yyyy-MM-dd'))
     .sort((a, b) => a.time.localeCompare(b.time))
-
   const hasApt = (day: Date) => appointments.some(a => a.date === format(day, 'yyyy-MM-dd'))
 
   return (
     <div className="h-full flex flex-col">
-      <div className="safe-top px-4 pt-2 pb-2 flex-shrink-0">
+      <div className="safe-top px-4 pt-3 pb-2 flex-shrink-0">
         <h1 className="text-xl font-bold mb-3" style={{ fontFamily: 'Georgia, serif' }}>Agenda</h1>
 
-        <div className="card p-3 mb-3">
+        {/* Calendar card */}
+        <div className="rounded-2xl p-3 mb-3" style={{ background: 'white', border: '1px solid var(--border)' }}>
           <div className="flex items-center justify-between mb-3">
-            <button onClick={() => setCurrentMonth(m => subMonths(m, 1))} className="p-1 press-effect">
-              <ChevronLeft size={20} />
+            <button onClick={() => setCurrentMonth(m => subMonths(m, 1))} className="w-8 h-8 flex items-center justify-center rounded-xl press-effect" style={{ background: '#f5f5f7' }}>
+              <ChevronLeft size={16} />
             </button>
-            <span className="font-semibold capitalize">
+            <span className="font-bold text-sm capitalize">
               {format(currentMonth, 'MMMM yyyy', { locale: ptBR })}
             </span>
-            <button onClick={() => setCurrentMonth(m => addMonths(m, 1))} className="p-1 press-effect">
-              <ChevronRight size={20} />
+            <button onClick={() => setCurrentMonth(m => addMonths(m, 1))} className="w-8 h-8 flex items-center justify-center rounded-xl press-effect" style={{ background: '#f5f5f7' }}>
+              <ChevronRight size={16} />
             </button>
           </div>
 
-          <div className="grid grid-cols-7 mb-1">
+          <div className="grid grid-cols-7 mb-1.5">
             {['D','S','T','Q','Q','S','S'].map((d, i) => (
-              <div key={i} className="calendar-day text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>{d}</div>
+              <div key={i} className="text-center text-[10px] font-bold py-1" style={{ color: 'var(--text-secondary)' }}>{d}</div>
             ))}
           </div>
 
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-7 gap-y-1">
             {Array.from({ length: startDow }).map((_, i) => <div key={`empty-${i}`} />)}
             {days.map(day => {
               const isToday = isSameDay(day, new Date())
@@ -144,7 +150,7 @@ export default function CalendarPage() {
                 <div key={day.toISOString()} className="relative flex justify-center">
                   <button
                     onClick={() => setSelectedDate(day)}
-                    className="calendar-day relative"
+                    className="w-8 h-8 flex items-center justify-center rounded-full text-[13px] relative transition-all"
                     style={{
                       background: isSelected ? 'var(--accent)' : isToday ? 'var(--accent-light)' : 'transparent',
                       color: isSelected ? 'white' : isToday ? 'var(--accent)' : 'var(--text-primary)',
@@ -153,7 +159,7 @@ export default function CalendarPage() {
                   >
                     {format(day, 'd')}
                     {hasE && !isSelected && (
-                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ background: isToday ? 'var(--accent)' : '#9ca3af' }} />
+                      <span className="absolute bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full" style={{ background: isToday ? 'var(--accent)' : '#cbd5e1' }} />
                     )}
                   </button>
                 </div>
@@ -163,54 +169,72 @@ export default function CalendarPage() {
         </div>
       </div>
 
+      {/* Day list */}
       <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-sm capitalize" style={{ color: 'var(--text-secondary)' }}>
-            {format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR })}
+            {format(selectedDate, "EEE, d 'de' MMMM", { locale: ptBR })}
           </h2>
-          <button onClick={openNew} className="flex items-center gap-1 text-sm font-medium press-effect" style={{ color: 'var(--accent)' }}>
-            <Plus size={16} /> Consulta
+          <button onClick={openNew} className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl press-effect" style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+            <Plus size={13} strokeWidth={2.5} /> Nova consulta
           </button>
         </div>
 
         {dayApts.length === 0 ? (
-          <div className="text-center py-10">
+          <div className="text-center py-12">
             <p className="text-3xl mb-2">📅</p>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhuma consulta neste dia</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>Nenhuma consulta neste dia</p>
           </div>
         ) : (
           <div className="space-y-2">
             {dayApts.map(apt => {
               const typeInfo = TYPES.find(t => t.value === apt.type)
+              const isDone = apt.status === 'completed'
               return (
-                <button key={apt.id} onClick={() => openEdit(apt)} className="card w-full p-4 text-left press-effect flex gap-3">
-                  <div className="flex-shrink-0 flex flex-col items-center w-14">
-                    <span className="text-sm font-bold">{apt.time}</span>
+                <div key={apt.id} className="rounded-2xl p-3.5 flex gap-3 press-effect"
+                  style={{ background: isDone ? '#f8faf8' : 'white', border: `1px solid ${isDone ? '#c8dfc8' : 'var(--border)'}`, opacity: isDone ? 0.85 : 1 }}>
+                  {/* Time */}
+                  <div className="flex-shrink-0 flex flex-col items-center w-12">
+                    <span className="text-sm font-bold" style={{ color: isDone ? '#9ca3af' : 'var(--text-primary)' }}>{apt.time}</span>
                     <span className="text-[10px]" style={{ color: 'var(--text-secondary)' }}>{apt.duration}min</span>
                   </div>
-                  <div className="w-0.5 rounded-full flex-shrink-0 self-stretch" style={{ background: typeInfo?.color || 'var(--accent)' }} />
-                  <div className="flex-1 min-w-0">
+                  {/* Color line */}
+                  <div className="w-0.5 rounded-full flex-shrink-0 self-stretch" style={{ background: isDone ? '#d1d5db' : typeInfo?.color || 'var(--accent)' }} />
+                  {/* Info */}
+                  <div className="flex-1 min-w-0" onClick={() => openEdit(apt)}>
                     <div className="flex items-center gap-2 mb-0.5">
-                      <p className="font-semibold text-sm truncate">{apt.patient_name}</p>
-                      <span className="badge flex-shrink-0" style={{ background: `${typeInfo?.color}18`, color: typeInfo?.color, fontSize: 10 }}>
+                      <p className="font-semibold text-sm truncate" style={{ textDecoration: isDone ? 'line-through' : 'none', color: isDone ? '#9ca3af' : 'var(--text-primary)' }}>
+                        {apt.patient_name}
+                      </p>
+                      <span className="badge flex-shrink-0" style={{ background: `${typeInfo?.color}15`, color: typeInfo?.color, fontSize: 10 }}>
                         {typeInfo?.label}
                       </span>
                     </div>
                     {apt.title && <p className="text-xs truncate" style={{ color: 'var(--text-secondary)' }}>{apt.title}</p>}
                   </div>
-                </button>
+                  {/* Complete button */}
+                  <button onClick={() => toggleComplete(apt)}
+                    className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center border-2 press-effect self-center transition-all"
+                    style={{
+                      background: isDone ? 'var(--accent)' : 'transparent',
+                      borderColor: isDone ? 'var(--accent)' : '#d1d5db',
+                    }}>
+                    {isDone && <Check size={13} color="white" strokeWidth={3} />}
+                  </button>
+                </div>
               )
             })}
           </div>
         )}
       </div>
 
+      {/* Form sheet */}
       {showForm && (
         <>
           <div className="overlay" onClick={closeForm} />
           <div className="bottom-sheet" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="px-4 pt-4 pb-2 flex items-center justify-between sticky top-0 bg-white z-10 border-b" style={{ borderColor: 'var(--border)' }}>
-              <h2 className="font-bold text-lg">{selectedApt ? 'Editar consulta' : 'Nova consulta'}</h2>
+              <h2 className="font-bold text-base">{selectedApt ? 'Editar consulta' : 'Nova consulta'}</h2>
               <button onClick={closeForm} className="w-8 h-8 flex items-center justify-center rounded-full" style={{ background: '#f5f5f7' }}>
                 <X size={16} />
               </button>
@@ -221,7 +245,7 @@ export default function CalendarPage() {
                 <input className="input-field" placeholder="Nome do paciente" value={form.patient_name} onChange={e => setForm(f => ({ ...f, patient_name: e.target.value }))} />
               </div>
               <div>
-                <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Título / Procedimento</label>
+                <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Procedimento</label>
                 <input className="input-field" placeholder="Ex: Extração do siso" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
