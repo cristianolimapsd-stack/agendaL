@@ -2,22 +2,20 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, Patient } from '@/lib/supabase'
-import { Search, Plus, X, ChevronRight, Phone, Calendar, FileText, Trash2, User } from 'lucide-react'
-import { format } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
+import { Search, Plus, X, ChevronRight, Trash2 } from 'lucide-react'
 
 const PROCEDURE_OPTIONS = [
   'Limpeza', 'Clareamento', 'Restauração', 'Extração', 'Canal',
   'Implante', 'Aparelho', 'Prótese', 'Radiografia', 'Consulta inicial', 'Retorno'
 ]
 
-const EMPTY_PATIENT: Omit<Patient, 'id' | 'created_at' | 'updated_at'> = {
+const EMPTY_PATIENT = {
   name: '',
   age: 0,
   phone: '',
   email: '',
   cpf: '',
-  procedures: [],
+  procedures: [] as string[],
   notes: '',
   next_appointment: '',
 }
@@ -30,15 +28,14 @@ export default function PatientsPage() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null)
   const [form, setForm] = useState({ ...EMPTY_PATIENT })
   const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => { loadPatients() }, [])
 
   async function loadPatients() {
     setLoading(true)
-    const { data } = await supabase
-      .from('patients')
-      .select('*')
-      .order('name')
+    const { data, error } = await supabase.from('patients').select('*').order('name')
+    if (error) console.error('Erro ao carregar:', error)
     setPatients(data || [])
     setLoading(false)
   }
@@ -46,20 +43,30 @@ export default function PatientsPage() {
   async function savePatient() {
     if (!form.name.trim()) return
     setSaving(true)
+    setError(null)
     const now = new Date().toISOString()
-    if (selectedPatient) {
-      await supabase.from('patients').update({ ...form, updated_at: now }).eq('id', selectedPatient.id)
-    } else {
-      await supabase.from('patients').insert({ ...form, created_at: now, updated_at: now })
+    try {
+      if (selectedPatient) {
+        const { error } = await supabase.from('patients').update({ ...form, updated_at: now }).eq('id', selectedPatient.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase.from('patients').insert({ ...form, created_at: now, updated_at: now })
+        if (error) throw error
+      }
+      await loadPatients()
+      closeForm()
+    } catch (err: any) {
+      console.error('Erro ao salvar:', err)
+      setError(err?.message || 'Erro ao salvar. Tente novamente.')
+    } finally {
+      setSaving(false)
     }
-    await loadPatients()
-    closeForm()
-    setSaving(false)
   }
 
   async function deletePatient(id: string) {
     if (!confirm('Excluir este paciente?')) return
-    await supabase.from('patients').delete().eq('id', id)
+    const { error } = await supabase.from('patients').delete().eq('id', id)
+    if (error) { alert('Erro ao excluir: ' + error.message); return }
     await loadPatients()
     closeForm()
   }
@@ -67,6 +74,7 @@ export default function PatientsPage() {
   function openNew() {
     setForm({ ...EMPTY_PATIENT })
     setSelectedPatient(null)
+    setError(null)
     setShowForm(true)
   }
 
@@ -78,12 +86,14 @@ export default function PatientsPage() {
       next_appointment: p.next_appointment || '',
     })
     setSelectedPatient(p)
+    setError(null)
     setShowForm(true)
   }
 
   function closeForm() {
     setShowForm(false)
     setSelectedPatient(null)
+    setError(null)
   }
 
   function toggleProcedure(p: string) {
@@ -102,7 +112,6 @@ export default function PatientsPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="safe-top px-4 pt-2 pb-3 flex-shrink-0" style={{ background: 'var(--bg-primary)' }}>
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -124,7 +133,6 @@ export default function PatientsPage() {
         </div>
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto no-scrollbar px-4 pb-4">
         {loading ? (
           <div className="flex items-center justify-center h-32">
@@ -180,7 +188,6 @@ export default function PatientsPage() {
         )}
       </div>
 
-      {/* Form sheet */}
       {showForm && (
         <>
           <div className="overlay" onClick={closeForm} />
@@ -193,6 +200,12 @@ export default function PatientsPage() {
             </div>
 
             <div className="px-4 py-4 space-y-4">
+              {error && (
+                <div className="p-3 rounded-xl text-sm font-medium" style={{ background: '#fff0f0', color: '#dc2626' }}>
+                  ⚠️ {error}
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Nome completo *</label>
                 <input className="input-field" placeholder="Ex: João da Silva" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
