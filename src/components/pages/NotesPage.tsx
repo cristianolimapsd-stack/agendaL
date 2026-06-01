@@ -8,6 +8,8 @@ import { ptBR } from 'date-fns/locale'
 
 const CATEGORIES = [
   { value: 'all', label: 'Todas' },
+  { value: 'inbox', label: '📥 Inbox' },
+  { value: 'diary', label: '📓 Diário' },
   { value: 'personal', label: '🙋 Pessoal' },
   { value: 'professional', label: '🦷 Profissional' },
   { value: 'idea', label: '💡 Ideia' },
@@ -17,16 +19,18 @@ const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
   personal:     { bg: '#e8eef8', text: '#4a6fa5', dot: '#4a6fa5' },
   professional: { bg: '#e8f0e8', text: '#5a825a', dot: '#5a825a' },
   idea:         { bg: '#fef9e7', text: '#a07800', dot: '#f59e0b' },
+  inbox:        { bg: '#f1f5f9', text: '#475569', dot: '#64748b' },
+  diary:        { bg: '#fdf2f8', text: '#be185d', dot: '#db2777' },
 }
 
 type NoteForm = {
   title: string
   content: string
-  category: 'personal' | 'professional' | 'idea'
+  category: 'personal' | 'professional' | 'idea' | 'inbox' | 'diary'
   pinned: boolean
 }
 
-const EMPTY_NOTE: NoteForm = { title: '', content: '', category: 'personal', pinned: false }
+const EMPTY_NOTE: NoteForm = { title: '', content: '', category: 'inbox', pinned: false }
 
 type View = 'list' | 'detail' | 'edit'
 
@@ -39,6 +43,7 @@ export default function NotesPage() {
   const [form, setForm] = useState<NoteForm>({ ...EMPTY_NOTE })
   const [saving, setSaving] = useState(false)
   const [isNew, setIsNew] = useState(false)
+  const [quickText, setQuickText] = useState('')
 
   useEffect(() => { loadNotes() }, [])
 
@@ -61,7 +66,7 @@ export default function NotesPage() {
       if (data) setSelected(data)
     }
     await loadNotes()
-    setView('detail')
+    setView('list')
     setIsNew(false)
     setSaving(false)
   }
@@ -74,6 +79,23 @@ export default function NotesPage() {
     setSelected(null)
   }
 
+  async function saveQuickInbox() {
+    const text = quickText.trim()
+    if (!text) return
+    const now = new Date().toISOString()
+    const title = text.length > 44 ? `${text.slice(0, 44)}...` : text
+    await supabase.from('notes').insert({
+      title,
+      content: text,
+      category: 'inbox',
+      pinned: false,
+      created_at: now,
+      updated_at: now,
+    })
+    setQuickText('')
+    await loadNotes()
+  }
+
   async function togglePin(note: Note, e?: React.MouseEvent) {
     e?.stopPropagation()
     await supabase.from('notes').update({ pinned: !note.pinned }).eq('id', note.id)
@@ -83,7 +105,9 @@ export default function NotesPage() {
 
   function openNote(n: Note) {
     setSelected(n)
-    setView('detail')
+    setForm({ title: n.title, content: n.content, category: n.category, pinned: n.pinned })
+    setIsNew(false)
+    setView('edit')
   }
 
   function openEdit(n: Note) {
@@ -221,7 +245,7 @@ export default function NotesPage() {
 
           {/* Delete */}
           <button onClick={() => deleteNote(selected.id)}
-            className="mt-10 w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 press-effect"
+            className="mt-10 w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 press-effect"
             style={{ background: '#fff0f0', color: '#dc2626' }}>
             <Trash2 size={16} /> Excluir nota
           </button>
@@ -235,9 +259,9 @@ export default function NotesPage() {
     <div className="h-full flex flex-col">
       <div className="safe-top flex-shrink-0">
         <div className="flex items-center justify-between px-4 pt-2 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
-          <button onClick={() => setView(selected && !isNew ? 'detail' : 'list')} className="flex items-center gap-1 press-effect" style={{ color: 'var(--accent)' }}>
+          <button onClick={() => setView('list')} className="flex items-center gap-1 press-effect" style={{ color: 'var(--accent)' }}>
             <ChevronLeft size={20} />
-            <span className="text-sm font-medium">{selected && !isNew ? selected.title || 'Nota' : 'Notas'}</span>
+            <span className="text-sm font-medium">Notas</span>
           </button>
           <button onClick={saveNote} disabled={saving || !form.title.trim()}
             className="px-4 py-1.5 rounded-xl text-sm font-semibold press-effect"
@@ -290,6 +314,14 @@ export default function NotesPage() {
           <Pin size={16} fill={form.pinned ? '#f59e0b' : 'none'} />
           {form.pinned ? 'Fixada' : 'Fixar nota'}
         </button>
+
+        {selected && !isNew && (
+          <button onClick={() => deleteNote(selected.id)}
+            className="mt-2 w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 press-effect"
+            style={{ background: '#fff0f0', color: '#dc2626' }}>
+            <Trash2 size={16} /> Excluir nota
+          </button>
+        )}
       </div>
     </div>
   )
