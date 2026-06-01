@@ -10,23 +10,27 @@ interface HomePageProps {
   setTab: (t: Tab) => void
 }
 
-const greet = () => {
-  const h = new Date().getHours()
+const greet = (h: number) => {
   if (h < 12) return 'Bom dia'
   if (h < 18) return 'Boa tarde'
   return 'Boa noite'
 }
 
 export default function HomePage({ setTab }: HomePageProps) {
-  const [now, setNow] = useState(new Date())
+  const [now, setNow] = useState<Date | null>(null)
 
   useEffect(() => {
+    setNow(new Date())
     const t = setInterval(() => setNow(new Date()), 60000)
     return () => clearInterval(t)
   }, [])
 
-  const today = format(now, "EEEE, d 'de' MMMM", { locale: ptBR })
-  const todayCapitalized = today.charAt(0).toUpperCase() + today.slice(1)
+  const todayCapitalized = now
+    ? (() => {
+        const today = format(now, "EEEE, d 'de' MMMM", { locale: ptBR })
+        return today.charAt(0).toUpperCase() + today.slice(1)
+      })()
+    : ''
 
   const quickActions = [
     { label: 'Pacientes', icon: Users, tab: 'patients' as Tab, color: '#e8f0e8', iconColor: '#5a825a', desc: 'Gerenciar fichas' },
@@ -43,7 +47,7 @@ export default function HomePage({ setTab }: HomePageProps) {
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{todayCapitalized}</p>
             <h1 className="text-2xl font-semibold mt-0.5" style={{ fontFamily: 'Georgia, serif', color: 'var(--text-primary)' }}>
-              {greet()}, Dr. 👋
+              {now ? `${greet(now.getHours())}, Dr. 👋` : 'Olá, Dr. 👋'}
             </h1>
           </div>
           <div
