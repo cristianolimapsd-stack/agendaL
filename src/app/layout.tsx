@@ -10,12 +10,9 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: 'DentalDesk',
   },
-icons: {
-  icon: [
-    { url: '/icon.svg', type: 'image/svg+xml' },
-  ],
-  apple: '/icon.svg',
-},
+  icons: {
+    icon: '/icon.svg',
+    apple: '/icon.svg',
   },
 }
 
