@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Plus, X, Trash2, ChevronLeft, TrendingUp, TrendingDown, DollarSign, Check } from 'lucide-react'
+import { Plus, X, Trash2, ChevronLeft, TrendingUp, TrendingDown, Check } from 'lucide-react'
 
 type FinanceType = 'income' | 'expense'
 
@@ -126,8 +126,6 @@ export default function FinancePage() {
   const pendingExpense = finances.filter(f => f.type === 'expense' && !f.paid).reduce((s, f) => s + f.amount, 0)
 
   const filtered = finances.filter(f => tab === 'all' || f.type === tab)
-
-  // GROUP BY DATE
   const grouped = filtered.reduce((acc, f) => {
     if (!acc[f.date]) acc[f.date] = []
     acc[f.date].push(f)
@@ -135,10 +133,11 @@ export default function FinancePage() {
   }, {} as Record<string, Finance[]>)
   const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a))
 
+  // FORM VIEW
   if (view === 'form') return (
     <div className="h-full flex flex-col overflow-y-auto no-scrollbar">
       <div className="safe-top flex-shrink-0">
-        <div className="flex items-center justify-between px-4 pt-2 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
+        <div className="flex items-center justify-between px-4 pt-3 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
           <button onClick={() => { setView('list'); setSelected(null) }} className="flex items-center gap-1 press-effect" style={{ color: 'var(--accent)' }}>
             <ChevronLeft size={20} />
             <span className="text-sm font-medium">Financeiro</span>
@@ -151,7 +150,6 @@ export default function FinancePage() {
       <div className="px-4 py-4 space-y-4 pb-8">
         {error && <div className="p-3 rounded-xl text-sm font-medium" style={{ background: '#fff0f0', color: '#dc2626' }}>⚠️ {error}</div>}
 
-        {/* Type toggle */}
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => setForm(f => ({ ...f, type: 'income', category: 'Consulta' }))}
             className="py-3 rounded-2xl font-semibold text-sm press-effect flex items-center justify-center gap-2"
@@ -195,16 +193,6 @@ export default function FinancePage() {
           <textarea className="input-field resize-none" rows={3} placeholder="Detalhes adicionais..." value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
         </div>
 
-        <button onClick={() => setForm(f => ({ ...f, paid: !f.paid }))}
-          className="flex items-center gap-2 text-sm font-medium press-effect"
-          style={{ color: form.paid ? '#166534' : 'var(--text-secondary)' }}>
-          <div className="w-5 h-5 rounded-md border-2 flex items-center justify-center"
-            style={{ borderColor: form.paid ? '#166534' : '#d1d5db', background: form.paid ? '#dcfce7' : 'transparent' }}>
-            {form.paid && <Check size={12} color="#166534" strokeWidth={3} />}
-          </div>
-          {form.type === 'income' ? 'Já recebi' : 'Já paguei'}
-        </button>
-
         <button onClick={saveFinance} disabled={saving || !form.title.trim() || !form.amount}
           className="w-full py-3.5 rounded-2xl font-semibold text-white press-effect"
           style={{ background: saving ? '#9ca3af' : 'var(--accent)' }}>
@@ -222,9 +210,10 @@ export default function FinancePage() {
     </div>
   )
 
+  // LIST VIEW
   return (
     <div className="h-full flex flex-col">
-      <div className="safe-top px-4 pt-2 pb-2 flex-shrink-0">
+      <div className="safe-top px-4 pt-3 pb-2 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
           <h1 className="text-xl font-bold" style={{ fontFamily: 'Georgia, serif' }}>Financeiro</h1>
           <button onClick={() => openNew()} className="w-9 h-9 rounded-full flex items-center justify-center press-effect" style={{ background: 'var(--accent)' }}>
@@ -234,30 +223,30 @@ export default function FinancePage() {
 
         {/* Month navigator */}
         <div className="flex items-center justify-between mb-3">
-          <button onClick={() => setMonthOffset(o => o - 1)} className="press-effect px-3 py-1 rounded-xl text-sm font-medium" style={{ background: '#f5f5f7', color: 'var(--text-secondary)' }}>‹</button>
-          <p className="text-sm font-semibold capitalize">{monthLabel}</p>
-          <button onClick={() => setMonthOffset(o => o + 1)} className="press-effect px-3 py-1 rounded-xl text-sm font-medium" style={{ background: '#f5f5f7', color: 'var(--text-secondary)' }}>›</button>
+          <button onClick={() => setMonthOffset(o => o - 1)} className="press-effect w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold" style={{ background: '#f5f5f7', color: 'var(--text-secondary)' }}>‹</button>
+          <p className="text-sm font-bold capitalize">{monthLabel}</p>
+          <button onClick={() => setMonthOffset(o => o + 1)} className="press-effect w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold" style={{ background: '#f5f5f7', color: 'var(--text-secondary)' }}>›</button>
         </div>
 
         {/* Summary cards */}
         <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="card p-3 text-center">
-            <p className="text-[10px] font-semibold uppercase mb-1" style={{ color: '#166534' }}>Receitas</p>
-            <p className="text-sm font-bold" style={{ color: '#166534' }}>{formatCurrency(totalIncome)}</p>
-            {pendingIncome > 0 && <p className="text-[10px] mt-0.5" style={{ color: '#9ca3af' }}>+{formatCurrency(pendingIncome)} pend.</p>}
+          <div className="rounded-2xl p-3 text-center" style={{ background: '#f0fdf4', border: '1px solid #bbf7d0' }}>
+            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: '#166534' }}>Receitas</p>
+            <p className="text-sm font-black" style={{ color: '#166534' }}>{formatCurrency(totalIncome)}</p>
+            {pendingIncome > 0 && <p className="text-[9px] mt-0.5" style={{ color: '#9ca3af' }}>+{formatCurrency(pendingIncome)} pend.</p>}
           </div>
-          <div className="card p-3 text-center" style={{ background: balance >= 0 ? '#f0fdf4' : '#fff0f0' }}>
-            <p className="text-[10px] font-semibold uppercase mb-1" style={{ color: balance >= 0 ? '#166534' : '#991b1b' }}>Saldo</p>
-            <p className="text-sm font-bold" style={{ color: balance >= 0 ? '#166534' : '#dc2626' }}>{formatCurrency(balance)}</p>
+          <div className="rounded-2xl p-3 text-center" style={{ background: balance >= 0 ? '#f0fdf4' : '#fff0f0', border: `1px solid ${balance >= 0 ? '#bbf7d0' : '#fecaca'}` }}>
+            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: balance >= 0 ? '#166534' : '#991b1b' }}>Saldo</p>
+            <p className="text-sm font-black" style={{ color: balance >= 0 ? '#166534' : '#dc2626' }}>{formatCurrency(balance)}</p>
           </div>
-          <div className="card p-3 text-center">
-            <p className="text-[10px] font-semibold uppercase mb-1" style={{ color: '#991b1b' }}>Despesas</p>
-            <p className="text-sm font-bold" style={{ color: '#991b1b' }}>{formatCurrency(totalExpense)}</p>
-            {pendingExpense > 0 && <p className="text-[10px] mt-0.5" style={{ color: '#9ca3af' }}>{formatCurrency(pendingExpense)} pend.</p>}
+          <div className="rounded-2xl p-3 text-center" style={{ background: '#fff0f0', border: '1px solid #fecaca' }}>
+            <p className="text-[10px] font-bold uppercase mb-1" style={{ color: '#991b1b' }}>Despesas</p>
+            <p className="text-sm font-black" style={{ color: '#991b1b' }}>{formatCurrency(totalExpense)}</p>
+            {pendingExpense > 0 && <p className="text-[9px] mt-0.5" style={{ color: '#9ca3af' }}>{formatCurrency(pendingExpense)} pend.</p>}
           </div>
         </div>
 
-        {/* Quick add buttons */}
+        {/* Quick add */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           <button onClick={() => openNew('income')} className="flex items-center justify-center gap-2 py-2.5 rounded-2xl text-sm font-semibold press-effect" style={{ background: '#dcfce7', color: '#166534' }}>
             <TrendingUp size={15} /> + Receita
@@ -290,8 +279,8 @@ export default function FinancePage() {
           <div className="space-y-4 pt-2">
             {sortedDates.map(date => (
               <div key={date}>
-                <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                <p className="text-xs font-bold mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  {new Date(date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', weekday: 'short' })}
                 </p>
                 <div className="space-y-2">
                   {grouped[date].map(f => (
@@ -313,26 +302,41 @@ function FinanceItem({ finance, onEdit, onTogglePaid }: {
   onTogglePaid: (f: Finance) => void
 }) {
   const isIncome = finance.type === 'income'
+  const isPaid = finance.paid
+
   return (
-    <button onClick={() => onEdit(finance)} className="card w-full p-3.5 text-left press-effect flex items-center gap-3">
+    <div className="rounded-2xl p-3.5 flex items-center gap-3"
+      style={{ background: isPaid ? (isIncome ? '#f0fdf4' : '#f8faff') : 'white', border: `1px solid ${isPaid ? (isIncome ? '#bbf7d0' : '#e0e7ff') : 'var(--border)'}` }}>
+      {/* Icon */}
       <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center"
         style={{ background: isIncome ? '#dcfce7' : '#fee2e2' }}>
-        {isIncome ? <TrendingUp size={16} style={{ color: '#166534' }} /> : <TrendingDown size={16} style={{ color: '#991b1b' }} />}
+        {isIncome
+          ? <TrendingUp size={16} style={{ color: '#166534' }} />
+          : <TrendingDown size={16} style={{ color: '#991b1b' }} />}
       </div>
-      <div className="flex-1 min-w-0">
+
+      {/* Info — tap to edit */}
+      <div className="flex-1 min-w-0 press-effect" onClick={() => onEdit(finance)}>
         <p className="text-sm font-semibold truncate">{finance.title}</p>
         <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-secondary)' }}>{finance.category}</p>
       </div>
-      <div className="text-right flex-shrink-0">
+
+      {/* Amount + paid button */}
+      <div className="flex items-center gap-2 flex-shrink-0">
         <p className="text-sm font-bold" style={{ color: isIncome ? '#166534' : '#dc2626' }}>
           {isIncome ? '+' : '-'}{formatCurrency(finance.amount)}
         </p>
-        <button onClick={e => { e.stopPropagation(); onTogglePaid(finance) }}
-          className="text-[10px] font-medium px-2 py-0.5 rounded-full mt-0.5"
-          style={{ background: finance.paid ? '#dcfce7' : '#f5f5f7', color: finance.paid ? '#166534' : '#9ca3af' }}>
-          {finance.paid ? '✓ Pago' : 'Pendente'}
+        {/* Quick paid toggle button — like routine check */}
+        <button
+          onClick={e => { e.stopPropagation(); onTogglePaid(finance) }}
+          className="w-8 h-8 rounded-full flex items-center justify-center border-2 press-effect transition-all duration-200"
+          style={{
+            background: isPaid ? (isIncome ? '#166534' : '#4a6fa5') : 'transparent',
+            borderColor: isPaid ? (isIncome ? '#166534' : '#4a6fa5') : '#d1d5db',
+          }}>
+          {isPaid && <Check size={14} color="white" strokeWidth={3} />}
         </button>
       </div>
-    </button>
+    </div>
   )
 }
