@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Tab } from '@/app/page'
-import { CalendarDays, Users, BookOpen, RotateCcw, Tooth, Clock, ChevronRight } from 'lucide-react'
+import { CalendarDays, Users, BookOpen, RotateCcw, Clock, ChevronRight } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
