@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, Patient } from '@/lib/supabase'
-import { Search, Plus, X, ChevronRight, Trash2, Edit3, Phone, Mail, FileText, Calendar, ChevronLeft, Hash } from 'lucide-react'
+import { Search, Plus, X, ChevronRight, Trash2, Edit3, Phone, Mail, FileText, Calendar, ChevronLeft, Hash, MessageCircle, Download } from 'lucide-react'
 
 const PROCEDURE_OPTIONS = [
   'Limpeza', 'Clareamento', 'Restauração', 'Extração', 'Canal',
@@ -25,7 +25,7 @@ const PROCEDURE_COLORS: Record<string, { bg: string; text: string }> = {
 
 const EMPTY_PATIENT = {
   name: '', age: 0, phone: '', email: '', cpf: '',
-  procedures: [] as string[], notes: '', next_appointment: '',
+  procedures: [] as string[], notes: '', next_appointment: '', next_appointment_time: '08:00',
 }
 
 type View = 'list' | 'profile' | 'form'
@@ -47,6 +47,10 @@ function getAvatarColor(name: string) {
   return colors[idx]
 }
 
+function onlyDigits(value: string) {
+  return value.replace(/\D/g, '')
+}
+
 export default function PatientsPage() {
   const [patients, setPatients] = useState<Patient[]>([])
   const [search, setSearch] = useState('')
@@ -57,6 +61,7 @@ export default function PatientsPage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [patientAppointments, setPatientAppointments] = useState<any[]>([])
 
   useEffect(() => { loadPatients() }, [])
 
@@ -73,14 +78,23 @@ export default function PatientsPage() {
     setError(null)
     const now = new Date().toISOString()
     try {
+      let savedPatient: Patient | null = null
+      const { next_appointment_time, ...patientPayload } = form
       if (selectedPatient && isEditing) {
-        const { error } = await supabase.from('patients').update({ ...form, updated_at: now }).eq('id', selectedPatient.id)
+        const { error } = await supabase.from('patients').update({ ...patientPayload, updated_at: now }).eq('id', selectedPatient.id)
         if (error) throw error
-        setSelectedPatient({ ...selectedPatient, ...form, updated_at: now })
+        savedPatient = { ...selectedPatient, ...patientPayload, updated_at: now }
+        setSelectedPatient(savedPatient)
       } else {
-        const { data, error } = await supabase.from('patients').insert({ ...form, created_at: now, updated_at: now }).select().single()
+        const { data, error } = await supabase.from('patients').insert({ ...patientPayload, created_at: now, updated_at: now }).select().single()
         if (error) throw error
+        savedPatient = data
         setSelectedPatient(data)
+      }
+      if (savedPatient) {
+        await syncPatientAppointment(savedPatient, next_appointment_time)
+        window.dispatchEvent(new Event('appointments:changed'))
+        await loadPatientAppointments(savedPatient)
       }
       await loadPatients()
       setView('profile')
@@ -92,6 +106,49 @@ export default function PatientsPage() {
     }
   }
 
+  async function syncPatientAppointment(patient: Patient, appointmentTime: string) {
+    const marker = `paciente:${patient.id}`
+    const { data: existing, error: findError } = await supabase
+      .from('appointments')
+      .select('*')
+      .ilike('notes', `%${marker}%`)
+
+    if (findError) throw findError
+
+    if (!patient.next_appointment) {
+      if (existing?.length) {
+        const ids = existing.map((apt: any) => apt.id)
+        const { error } = await supabase.from('appointments').delete().in('id', ids)
+        if (error) throw error
+      }
+      return
+    }
+
+    const payload = {
+      patient_name: patient.name,
+      title: 'Próxima consulta',
+      date: patient.next_appointment,
+      time: appointmentTime || '08:00',
+      duration: 30,
+      type: 'consulta',
+      status: 'scheduled',
+      notes: `Criada automaticamente pela ficha do paciente. ${marker}`,
+    }
+
+    if (existing?.length) {
+      const [first, ...extra] = existing
+      const { error } = await supabase.from('appointments').update(payload).eq('id', first.id)
+      if (error) throw error
+      if (extra.length) {
+        const { error: deleteError } = await supabase.from('appointments').delete().in('id', extra.map((apt: any) => apt.id))
+        if (deleteError) throw deleteError
+      }
+    } else {
+      const { error } = await supabase.from('appointments').insert({ ...payload, created_at: new Date().toISOString() })
+      if (error) throw error
+    }
+  }
+
   async function deletePatient(id: string) {
     if (!confirm('Excluir este paciente?')) return
     await supabase.from('patients').delete().eq('id', id)
@@ -100,14 +157,54 @@ export default function PatientsPage() {
     setSelectedPatient(null)
   }
 
+  function sendWhatsAppReminder(patient: Patient) {
+    const phone = onlyDigits(patient.phone || '')
+    if (!phone) return
+    const phoneWithCountry = phone.startsWith('55') ? phone : `55${phone}`
+    const date = patient.next_appointment
+      ? new Date(patient.next_appointment + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+      : 'sua próxima consulta'
+    const message = `Olá, ${patient.name}! Passando para lembrar da sua consulta em ${date}. Qualquer imprevisto, me avise por aqui.`
+    window.open(`https://wa.me/${phoneWithCountry}?text=${encodeURIComponent(message)}`, '_blank')
+  }
+
+  function downloadPatientTerm(patient: Patient) {
+    const today = new Date().toLocaleDateString('pt-BR')
+    const content = [
+      'TERMO DE ATENDIMENTO E REGISTRO DO PACIENTE',
+      '',
+      `Paciente: ${patient.name}`,
+      patient.cpf ? `CPF: ${patient.cpf}` : '',
+      patient.phone ? `Telefone: ${patient.phone}` : '',
+      '',
+      'Declaro estar ciente das informações apresentadas durante o atendimento e autorizo o registro dos dados clínicos necessários para acompanhamento.',
+      '',
+      'Observações clínicas:',
+      patient.notes || 'Sem observações registradas.',
+      '',
+      `Data: ${today}`,
+      '',
+      'Assinatura do paciente: __________________________________',
+    ].filter(Boolean).join('\n')
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `termo-${patient.name.toLowerCase().replace(/\s+/g, '-')}.txt`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   function openProfile(p: Patient) {
     setSelectedPatient(p)
+    loadPatientAppointments(p)
     setView('profile')
   }
 
   function openNew() {
     setForm({ ...EMPTY_PATIENT })
     setSelectedPatient(null)
+    setPatientAppointments([])
     setIsEditing(false)
     setError(null)
     setView('form')
@@ -118,11 +215,44 @@ export default function PatientsPage() {
       name: p.name, age: p.age, phone: p.phone,
       email: p.email || '', cpf: p.cpf || '',
       procedures: p.procedures || [], notes: p.notes || '',
-      next_appointment: p.next_appointment || '',
+      next_appointment: p.next_appointment || '', next_appointment_time: '08:00',
     })
+    loadAutoAppointmentTime(p)
     setIsEditing(true)
     setError(null)
     setView('form')
+  }
+
+  async function loadAutoAppointmentTime(patient: Patient) {
+    const marker = `paciente:${patient.id}`
+    const { data } = await supabase
+      .from('appointments')
+      .select('time')
+      .ilike('notes', `%${marker}%`)
+      .limit(1)
+    const time = data?.[0]?.time
+    if (time) setForm(f => ({ ...f, next_appointment_time: time }))
+  }
+
+  async function loadPatientAppointments(patient: Patient) {
+    const marker = `paciente:${patient.id}`
+    const { data: automatic } = await supabase
+      .from('appointments')
+      .select('*')
+      .ilike('notes', `%${marker}%`)
+      .order('date', { ascending: false })
+      .limit(8)
+    const { data: byName } = await supabase
+      .from('appointments')
+      .select('*')
+      .ilike('patient_name', `%${patient.name}%`)
+      .order('date', { ascending: false })
+      .limit(8)
+    const merged = [...(automatic || []), ...(byName || [])]
+      .filter((apt, index, arr) => arr.findIndex(x => x.id === apt.id) === index)
+      .sort((a, b) => `${b.date} ${b.time}`.localeCompare(`${a.date} ${a.time}`))
+      .slice(0, 8)
+    setPatientAppointments(merged)
   }
 
   function toggleProcedure(p: string) {
@@ -280,8 +410,30 @@ export default function PatientsPage() {
                   {new Date(selectedPatient.next_appointment + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
                 </p>
               </div>
+              {selectedPatient.phone && (
+                <button onClick={() => sendWhatsAppReminder(selectedPatient)}
+                  className="mt-3 w-full py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 press-effect"
+                  style={{ background: '#dcfce7', color: '#166534' }}>
+                  <MessageCircle size={16} /> Enviar lembrete
+                </button>
+              )}
             </div>
           )}
+
+          <div className="grid grid-cols-2 gap-2">
+            {selectedPatient.phone && (
+              <button onClick={() => sendWhatsAppReminder(selectedPatient)}
+                className="py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 press-effect"
+                style={{ background: '#dcfce7', color: '#166534' }}>
+                <MessageCircle size={16} /> WhatsApp
+              </button>
+            )}
+            <button onClick={() => downloadPatientTerm(selectedPatient)}
+              className="py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 press-effect"
+              style={{ background: '#f5f5f7', color: 'var(--text-primary)' }}>
+              <Download size={16} /> Termo
+            </button>
+          </div>
 
           {selectedPatient.procedures?.length > 0 && (
             <div className="card p-4">
@@ -294,6 +446,36 @@ export default function PatientsPage() {
               </div>
             </div>
           )}
+
+          <div className="card p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>Histórico de consultas</p>
+            {patientAppointments.length === 0 ? (
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Nenhuma consulta encontrada na agenda.</p>
+            ) : (
+              <div className="space-y-3">
+                {patientAppointments.map(apt => {
+                  const statusLabel = apt.status === 'completed' ? 'Concluída' : apt.status === 'cancelled' ? 'Cancelada' : 'Agendada'
+                  const statusColor = apt.status === 'completed' ? '#166534' : apt.status === 'cancelled' ? '#991b1b' : '#4a6fa5'
+                  return (
+                    <div key={apt.id} className="flex gap-3">
+                      <div className="w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center" style={{ background: `${statusColor}12` }}>
+                        <Calendar size={14} style={{ color: statusColor }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold truncate">{apt.title || 'Consulta'}</p>
+                          <span className="text-[10px] font-semibold px-2 py-1 rounded-lg flex-shrink-0" style={{ background: `${statusColor}12`, color: statusColor }}>{statusLabel}</span>
+                        </div>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                          {new Date(apt.date + 'T12:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })} às {apt.time}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
 
           {selectedPatient.notes && (
             <div className="card p-4">
@@ -308,7 +490,7 @@ export default function PatientsPage() {
           )}
 
           <button onClick={() => deletePatient(selectedPatient.id)}
-            className="w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 press-effect"
+            className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 press-effect"
             style={{ background: '#fff0f0', color: '#dc2626' }}>
             <Trash2 size={16} /> Excluir paciente
           </button>
@@ -378,25 +560,29 @@ export default function PatientsPage() {
 
         <div>
           <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Próxima consulta</label>
-          <input className="input-field" type="date" value={form.next_appointment} onChange={e => setForm(f => ({ ...f, next_appointment: e.target.value }))} />
+          <div className="grid grid-cols-2 gap-3">
+            <input className="input-field" type="date" value={form.next_appointment} onChange={e => setForm(f => ({ ...f, next_appointment: e.target.value }))} />
+            <input className="input-field" type="time" value={form.next_appointment_time} onChange={e => setForm(f => ({ ...f, next_appointment_time: e.target.value }))} />
+          </div>
+          <p className="text-[11px] mt-1.5" style={{ color: 'var(--text-secondary)' }}>Ao salvar, esta data e horário aparecem automaticamente na agenda.</p>
         </div>
 
         <div>
-          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Observações / Histórico</label>
+          <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Ficha clínica / Histórico</label>
           <textarea className="input-field resize-none" rows={4}
-            placeholder="Anotações sobre o paciente, histórico médico, alergias..."
+            placeholder="Anamnese, alergias, medicamentos, histórico médico, evolução do tratamento..."
             value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
         </div>
 
         <button onClick={savePatient} disabled={saving || !form.name.trim()}
-          className="w-full py-3.5 rounded-2xl font-semibold text-white press-effect"
+          className="w-full py-3.5 rounded-xl font-semibold text-white press-effect"
           style={{ background: saving ? '#9ca3af' : 'var(--accent)' }}>
           {saving ? 'Salvando...' : isEditing ? 'Salvar alterações' : 'Cadastrar paciente'}
         </button>
 
         {isEditing && selectedPatient && (
           <button onClick={() => deletePatient(selectedPatient.id)}
-            className="w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 press-effect"
+            className="w-full py-3 rounded-xl font-medium flex items-center justify-center gap-2 press-effect"
             style={{ background: '#fff0f0', color: '#dc2626' }}>
             <Trash2 size={16} /> Excluir paciente
           </button>
