@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, Note } from '@/lib/supabase'
-import { Plus, X, Pin, Trash2, Search } from 'lucide-react'
+import { Plus, X, Pin, Trash2, Search, ChevronLeft, Edit3 } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -13,10 +13,10 @@ const CATEGORIES = [
   { value: 'idea', label: '💡 Ideia' },
 ]
 
-const CAT_COLORS: Record<string, { bg: string; text: string }> = {
-  personal: { bg: '#e8eef8', text: '#4a6fa5' },
-  professional: { bg: '#e8f0e8', text: '#5a825a' },
-  idea: { bg: '#fef9e7', text: '#a07800' },
+const CAT_COLORS: Record<string, { bg: string; text: string; dot: string }> = {
+  personal:     { bg: '#e8eef8', text: '#4a6fa5', dot: '#4a6fa5' },
+  professional: { bg: '#e8f0e8', text: '#5a825a', dot: '#5a825a' },
+  idea:         { bg: '#fef9e7', text: '#a07800', dot: '#f59e0b' },
 }
 
 type NoteForm = {
@@ -28,19 +28,24 @@ type NoteForm = {
 
 const EMPTY_NOTE: NoteForm = { title: '', content: '', category: 'personal', pinned: false }
 
+type View = 'list' | 'detail' | 'edit'
+
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([])
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
-  const [showForm, setShowForm] = useState(false)
+  const [view, setView] = useState<View>('list')
   const [selected, setSelected] = useState<Note | null>(null)
   const [form, setForm] = useState<NoteForm>({ ...EMPTY_NOTE })
   const [saving, setSaving] = useState(false)
+  const [isNew, setIsNew] = useState(false)
 
   useEffect(() => { loadNotes() }, [])
 
   async function loadNotes() {
-    const { data } = await supabase.from('notes').select('*').order('pinned', { ascending: false }).order('updated_at', { ascending: false })
+    const { data } = await supabase.from('notes').select('*')
+      .order('pinned', { ascending: false })
+      .order('updated_at', { ascending: false })
     setNotes(data || [])
   }
 
@@ -48,13 +53,16 @@ export default function NotesPage() {
     if (!form.title.trim()) return
     setSaving(true)
     const now = new Date().toISOString()
-    if (selected) {
-      await supabase.from('notes').update({ ...form, updated_at: now }).eq('id', selected.id)
+    if (selected && !isNew) {
+      const { data } = await supabase.from('notes').update({ ...form, updated_at: now }).eq('id', selected.id).select().single()
+      if (data) setSelected(data)
     } else {
-      await supabase.from('notes').insert({ ...form, created_at: now, updated_at: now })
+      const { data } = await supabase.from('notes').insert({ ...form, created_at: now, updated_at: now }).select().single()
+      if (data) setSelected(data)
     }
     await loadNotes()
-    closeForm()
+    setView('detail')
+    setIsNew(false)
     setSaving(false)
   }
 
@@ -62,29 +70,33 @@ export default function NotesPage() {
     if (!confirm('Excluir esta nota?')) return
     await supabase.from('notes').delete().eq('id', id)
     await loadNotes()
-    closeForm()
+    setView('list')
+    setSelected(null)
   }
 
-  async function togglePin(note: Note) {
+  async function togglePin(note: Note, e?: React.MouseEvent) {
+    e?.stopPropagation()
     await supabase.from('notes').update({ pinned: !note.pinned }).eq('id', note.id)
     await loadNotes()
+    if (selected?.id === note.id) setSelected({ ...note, pinned: !note.pinned })
+  }
+
+  function openNote(n: Note) {
+    setSelected(n)
+    setView('detail')
+  }
+
+  function openEdit(n: Note) {
+    setForm({ title: n.title, content: n.content, category: n.category, pinned: n.pinned })
+    setIsNew(false)
+    setView('edit')
   }
 
   function openNew() {
     setForm({ ...EMPTY_NOTE })
     setSelected(null)
-    setShowForm(true)
-  }
-
-  function openEdit(n: Note) {
-    setForm({ title: n.title, content: n.content, category: n.category, pinned: n.pinned })
-    setSelected(n)
-    setShowForm(true)
-  }
-
-  function closeForm() {
-    setShowForm(false)
-    setSelected(null)
+    setIsNew(true)
+    setView('edit')
   }
 
   const filtered = notes.filter(n => {
@@ -96,14 +108,12 @@ export default function NotesPage() {
   const pinned = filtered.filter(n => n.pinned)
   const rest = filtered.filter(n => !n.pinned)
 
-  return (
+  // LIST VIEW
+  if (view === 'list') return (
     <div className="h-full flex flex-col">
       <div className="safe-top px-4 pt-2 pb-2 flex-shrink-0">
         <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-xl font-bold" style={{ fontFamily: 'Georgia, serif' }}>Notas</h1>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{notes.length} anotações</p>
-          </div>
+          <h1 className="text-xl font-bold" style={{ fontFamily: 'Georgia, serif' }}>Notas</h1>
           <button onClick={openNew} className="w-9 h-9 rounded-full flex items-center justify-center press-effect" style={{ background: 'var(--accent)' }}>
             <Plus size={18} color="white" strokeWidth={2.5} />
           </button>
@@ -136,107 +146,176 @@ export default function NotesPage() {
           <>
             {pinned.length > 0 && (
               <>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  📌 Fixadas
-                </p>
-                <div className="space-y-2 mb-4">
-                  {pinned.map(n => <NoteCard key={n.id} note={n} onOpen={openEdit} onPin={togglePin} />)}
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2 mt-1" style={{ color: 'var(--text-secondary)' }}>📌 Fixadas</p>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {pinned.map(n => <NoteCard key={n.id} note={n} onOpen={openNote} onPin={togglePin} />)}
                 </div>
               </>
             )}
             {rest.length > 0 && (
               <>
                 {pinned.length > 0 && <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>Outras</p>}
-                <div className="space-y-2">
-                  {rest.map(n => <NoteCard key={n.id} note={n} onOpen={openEdit} onPin={togglePin} />)}
+                <div className="grid grid-cols-2 gap-2">
+                  {rest.map(n => <NoteCard key={n.id} note={n} onOpen={openNote} onPin={togglePin} />)}
                 </div>
               </>
             )}
           </>
         )}
       </div>
+    </div>
+  )
 
-      {showForm && (
-        <>
-          <div className="overlay" onClick={closeForm} />
-          <div className="bottom-sheet" style={{ maxHeight: '92vh', overflowY: 'auto' }}>
-            <div className="px-4 pt-4 pb-2 flex items-center justify-between sticky top-0 bg-white z-10 border-b" style={{ borderColor: 'var(--border)' }}>
-              <h2 className="font-bold text-lg">{selected ? 'Editar nota' : 'Nova nota'}</h2>
-              <button onClick={closeForm} className="w-8 h-8 flex items-center justify-center rounded-full" style={{ background: '#f5f5f7' }}>
-                <X size={16} />
+  // DETAIL VIEW
+  if (view === 'detail' && selected) {
+    const cat = CAT_COLORS[selected.category] || CAT_COLORS.personal
+    return (
+      <div className="h-full flex flex-col">
+        <div className="safe-top flex-shrink-0">
+          <div className="flex items-center justify-between px-4 pt-2 pb-3">
+            <button onClick={() => setView('list')} className="flex items-center gap-1 press-effect" style={{ color: 'var(--accent)' }}>
+              <ChevronLeft size={20} />
+              <span className="text-sm font-medium">Notas</span>
+            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => togglePin(selected)}
+                className="w-8 h-8 flex items-center justify-center rounded-full press-effect"
+                style={{ background: selected.pinned ? '#fef3c7' : '#f5f5f7' }}>
+                <Pin size={15} fill={selected.pinned ? '#f59e0b' : 'none'} style={{ color: selected.pinned ? '#f59e0b' : '#9ca3af' }} />
               </button>
-            </div>
-            <div className="px-4 py-4 space-y-4">
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Título *</label>
-                <input className="input-field" placeholder="Título da nota" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Categoria</label>
-                <div className="flex gap-2">
-                  {CATEGORIES.slice(1).map(c => (
-                    <button key={c.value} onClick={() => setForm(f => ({ ...f, category: c.value as NoteForm['category'] }))}
-                      className="badge flex-1 press-effect justify-center"
-                      style={{ background: form.category === c.value ? 'var(--accent)' : '#f5f5f7', color: form.category === c.value ? 'white' : 'var(--text-secondary)', fontSize: 12, padding: '8px' }}>
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Conteúdo</label>
-                <textarea className="input-field resize-none" rows={8}
-                  placeholder="Escreva sua nota aqui..."
-                  value={form.content} onChange={e => setForm(f => ({ ...f, content: e.target.value }))} />
-              </div>
-              <div className="flex items-center gap-3">
-                <button onClick={() => setForm(f => ({ ...f, pinned: !f.pinned }))}
-                  className="flex items-center gap-2 text-sm font-medium press-effect"
-                  style={{ color: form.pinned ? '#f59e0b' : 'var(--text-secondary)' }}>
-                  <Pin size={16} fill={form.pinned ? '#f59e0b' : 'none'} />
-                  {form.pinned ? 'Fixada' : 'Fixar nota'}
-                </button>
-              </div>
-              <button onClick={saveNote} disabled={saving || !form.title.trim()}
-                className="w-full py-3.5 rounded-2xl font-semibold text-white press-effect"
-                style={{ background: saving ? '#9ca3af' : 'var(--accent)' }}>
-                {saving ? 'Salvando...' : selected ? 'Salvar' : 'Criar nota'}
+              <button onClick={() => openEdit(selected)}
+                className="flex items-center gap-1.5 press-effect px-3 py-1.5 rounded-xl"
+                style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+                <Edit3 size={14} />
+                <span className="text-sm font-medium">Editar</span>
               </button>
-              {selected && (
-                <button onClick={() => deleteNote(selected.id)}
-                  className="w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 press-effect"
-                  style={{ background: '#fff0f0', color: '#dc2626' }}>
-                  <Trash2 size={16} /> Excluir nota
-                </button>
-              )}
             </div>
           </div>
-        </>
-      )}
+        </div>
+
+        <div className="flex-1 overflow-y-auto no-scrollbar px-5 pb-8">
+          {/* Category badge */}
+          <span className="badge mb-4 inline-flex" style={{ background: cat.bg, color: cat.text, fontSize: 11 }}>
+            {selected.category === 'personal' ? '🙋 Pessoal' : selected.category === 'professional' ? '🦷 Profissional' : '💡 Ideia'}
+          </span>
+
+          {/* Title */}
+          <h2 className="text-2xl font-bold mb-2 leading-tight" style={{ fontFamily: 'Georgia, serif' }}>{selected.title}</h2>
+
+          {/* Date */}
+          <p className="text-xs mb-6" style={{ color: 'var(--text-secondary)' }}>
+            Atualizada em {format(new Date(selected.updated_at), "d 'de' MMMM 'às' HH:mm", { locale: ptBR })}
+          </p>
+
+          {/* Divider */}
+          <div className="h-px mb-6" style={{ background: 'var(--border)' }} />
+
+          {/* Content */}
+          {selected.content ? (
+            <p className="text-base leading-relaxed" style={{ color: 'var(--text-primary)', whiteSpace: 'pre-wrap', fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}>
+              {selected.content}
+            </p>
+          ) : (
+            <p className="text-base italic" style={{ color: '#9ca3af' }}>Sem conteúdo.</p>
+          )}
+
+          {/* Delete */}
+          <button onClick={() => deleteNote(selected.id)}
+            className="mt-10 w-full py-3 rounded-2xl font-medium flex items-center justify-center gap-2 press-effect"
+            style={{ background: '#fff0f0', color: '#dc2626' }}>
+            <Trash2 size={16} /> Excluir nota
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // EDIT VIEW
+  return (
+    <div className="h-full flex flex-col">
+      <div className="safe-top flex-shrink-0">
+        <div className="flex items-center justify-between px-4 pt-2 pb-3 border-b" style={{ borderColor: 'var(--border)' }}>
+          <button onClick={() => setView(selected && !isNew ? 'detail' : 'list')} className="flex items-center gap-1 press-effect" style={{ color: 'var(--accent)' }}>
+            <ChevronLeft size={20} />
+            <span className="text-sm font-medium">{selected && !isNew ? selected.title || 'Nota' : 'Notas'}</span>
+          </button>
+          <button onClick={saveNote} disabled={saving || !form.title.trim()}
+            className="px-4 py-1.5 rounded-xl text-sm font-semibold press-effect"
+            style={{ background: saving || !form.title.trim() ? '#e5e7eb' : 'var(--accent)', color: saving || !form.title.trim() ? '#9ca3af' : 'white' }}>
+            {saving ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto no-scrollbar px-5 pt-4 pb-8 flex flex-col gap-4">
+        {/* Category selector */}
+        <div className="flex gap-2">
+          {CATEGORIES.slice(1).map(c => {
+            const col = CAT_COLORS[c.value]
+            const active = form.category === c.value
+            return (
+              <button key={c.value} onClick={() => setForm(f => ({ ...f, category: c.value as NoteForm['category'] }))}
+                className="badge flex-1 justify-center press-effect"
+                style={{ background: active ? col.bg : '#f5f5f7', color: active ? col.text : 'var(--text-secondary)', fontSize: 12, padding: '7px', border: active ? `1.5px solid ${col.text}30` : '1.5px solid transparent' }}>
+                {c.label}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Title */}
+        <input
+          className="text-2xl font-bold bg-transparent outline-none w-full"
+          style={{ fontFamily: 'Georgia, serif', color: 'var(--text-primary)', border: 'none', padding: 0 }}
+          placeholder="Título"
+          value={form.title}
+          onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
+        />
+
+        <div className="h-px" style={{ background: 'var(--border)' }} />
+
+        {/* Content */}
+        <textarea
+          className="flex-1 bg-transparent outline-none w-full resize-none text-base leading-relaxed"
+          style={{ color: 'var(--text-primary)', border: 'none', padding: 0, minHeight: 300, fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+          placeholder="Comece a escrever..."
+          value={form.content}
+          onChange={e => setForm(f => ({ ...f, content: e.target.value }))}
+        />
+
+        {/* Pin toggle */}
+        <button onClick={() => setForm(f => ({ ...f, pinned: !f.pinned }))}
+          className="flex items-center gap-2 text-sm font-medium press-effect self-start"
+          style={{ color: form.pinned ? '#f59e0b' : 'var(--text-secondary)' }}>
+          <Pin size={16} fill={form.pinned ? '#f59e0b' : 'none'} />
+          {form.pinned ? 'Fixada' : 'Fixar nota'}
+        </button>
+      </div>
     </div>
   )
 }
 
-function NoteCard({ note, onOpen, onPin }: { note: Note; onOpen: (n: Note) => void; onPin: (n: Note) => void }) {
-  const cat = CAT_COLORS[note.category] || { bg: '#f5f5f7', text: '#6b7280' }
+function NoteCard({ note, onOpen, onPin }: { note: Note; onOpen: (n: Note) => void; onPin: (n: Note, e: React.MouseEvent) => void }) {
+  const cat = CAT_COLORS[note.category] || CAT_COLORS.personal
+  const wordCount = note.content?.split(/\s+/).filter(Boolean).length || 0
+
   return (
-    <button onClick={() => onOpen(note)} className="card w-full p-4 text-left press-effect">
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <p className="font-semibold text-sm flex-1">{note.title}</p>
-        <button onClick={e => { e.stopPropagation(); onPin(note) }} className="flex-shrink-0 p-0.5">
-          <Pin size={14} fill={note.pinned ? '#f59e0b' : 'none'} style={{ color: note.pinned ? '#f59e0b' : '#d1d5db' }} />
+    <button onClick={() => onOpen(note)} className="card p-4 text-left press-effect flex flex-col" style={{ minHeight: 120 }}>
+      <div className="flex items-start justify-between gap-1 mb-2">
+        <div className="w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1" style={{ background: cat.dot }} />
+        <button onClick={e => onPin(note, e)} className="flex-shrink-0 p-0.5 -mr-1 -mt-1">
+          <Pin size={13} fill={note.pinned ? '#f59e0b' : 'none'} style={{ color: note.pinned ? '#f59e0b' : '#d1d5db' }} />
         </button>
       </div>
+      <p className="font-semibold text-sm leading-snug mb-1 flex-1" style={{ color: 'var(--text-primary)' }}>{note.title}</p>
       {note.content && (
-        <p className="text-xs line-clamp-2 mb-2" style={{ color: 'var(--text-secondary)' }}>{note.content}</p>
+        <p className="text-xs line-clamp-2 mb-2" style={{ color: 'var(--text-secondary)', lineHeight: 1.5 }}>{note.content}</p>
       )}
-      <div className="flex items-center gap-2">
-        <span className="badge" style={{ background: cat.bg, color: cat.text, fontSize: 10 }}>
-          {note.category === 'personal' ? '🙋 Pessoal' : note.category === 'professional' ? '🦷 Profissional' : '💡 Ideia'}
-        </span>
+      <div className="flex items-center justify-between mt-auto">
         <span className="text-[10px]" style={{ color: '#9ca3af' }}>
           {format(new Date(note.updated_at), "d MMM", { locale: ptBR })}
         </span>
+        {wordCount > 0 && <span className="text-[10px]" style={{ color: '#9ca3af' }}>{wordCount} palavras</span>}
       </div>
     </button>
   )
