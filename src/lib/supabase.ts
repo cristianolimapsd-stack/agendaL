@@ -52,3 +52,14 @@ export type Routine = {
   completed_today: boolean
   created_at: string
 }
+export type Finance = {
+  id: string
+  title: string
+  amount: number
+  type: 'income' | 'expense'
+  category: string
+  date: string
+  paid: boolean
+  notes: string
+  created_at: string
+}
