@@ -19,7 +19,14 @@ const CAT_COLORS: Record<string, { bg: string; text: string }> = {
   idea: { bg: '#fef9e7', text: '#a07800' },
 }
 
-const EMPTY_NOTE = { title: '', content: '', category: 'personal' as const, pinned: false }
+type NoteForm = {
+  title: string
+  content: string
+  category: 'personal' | 'professional' | 'idea'
+  pinned: boolean
+}
+
+const EMPTY_NOTE: NoteForm = { title: '', content: '', category: 'personal', pinned: false }
 
 export default function NotesPage() {
   const [notes, setNotes] = useState<Note[]>([])
@@ -27,7 +34,7 @@ export default function NotesPage() {
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState<Note | null>(null)
-  const [form, setForm] = useState({ ...EMPTY_NOTE })
+  const [form, setForm] = useState<NoteForm>({ ...EMPTY_NOTE })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadNotes() }, [])
@@ -168,7 +175,7 @@ export default function NotesPage() {
                 <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Categoria</label>
                 <div className="flex gap-2">
                   {CATEGORIES.slice(1).map(c => (
-                    <button key={c.value} onClick={() => setForm(f => ({ ...f, category: c.value as any }))}
+                    <button key={c.value} onClick={() => setForm(f => ({ ...f, category: c.value as NoteForm['category'] }))}
                       className="badge flex-1 press-effect justify-center"
                       style={{ background: form.category === c.value ? 'var(--accent)' : '#f5f5f7', color: form.category === c.value ? 'white' : 'var(--text-secondary)', fontSize: 12, padding: '8px' }}>
                       {c.label}
