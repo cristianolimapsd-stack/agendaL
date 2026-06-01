@@ -28,7 +28,7 @@ type FinanceForm = {
   notes: string
 }
 
-const INCOME_CATEGORIES = ['Consulta', 'Retorno', 'Procedimento', 'Convênio', 'Outro']
+const INCOME_CATEGORIES = ['Consulta', 'Retorno', 'Procedimento', 'Orçamento', 'Convênio', 'Outro']
 const EXPENSE_CATEGORIES = ['Aluguel', 'Material', 'Equipamento', 'Salário', 'Marketing', 'Imposto', 'Outro']
 
 const EMPTY_FORM: FinanceForm = {
@@ -54,6 +54,12 @@ export default function FinancePage() {
   const [monthOffset, setMonthOffset] = useState(0)
 
   useEffect(() => { loadFinances() }, [monthOffset])
+
+  useEffect(() => {
+    const refresh = () => loadFinances()
+    window.addEventListener('finances:changed', refresh)
+    return () => window.removeEventListener('finances:changed', refresh)
+  }, [monthOffset])
 
   async function loadFinances() {
     const now = new Date()
