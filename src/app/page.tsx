@@ -6,9 +6,10 @@ import PatientsPage from '@/components/pages/PatientsPage'
 import CalendarPage from '@/components/pages/CalendarPage'
 import NotesPage from '@/components/pages/NotesPage'
 import RoutinePage from '@/components/pages/RoutinePage'
+import FinancePage from '@/components/pages/FinancePage'
 import BottomNav from '@/components/layout/BottomNav'
 
-export type Tab = 'home' | 'patients' | 'calendar' | 'notes' | 'routine'
+export type Tab = 'home' | 'patients' | 'calendar' | 'notes' | 'routine' | 'finance'
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home')
@@ -20,6 +21,7 @@ export default function App() {
       case 'calendar': return <CalendarPage />
       case 'notes': return <NotesPage />
       case 'routine': return <RoutinePage />
+      case 'finance': return <FinancePage />
     }
   }
 
