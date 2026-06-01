@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, Routine } from '@/lib/supabase'
-import { Plus, X, Check, Trash2 } from 'lucide-react'
+import { Plus, X, Check, Trash2, Flame, Star, Trophy, ChevronLeft, Edit3, Zap } from 'lucide-react'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -10,10 +10,10 @@ const DAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb']
 const DAYS_FULL = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
 
 const CATEGORIES = [
-  { value: 'morning', label: '🌅 Manhã', color: '#fef3c7', textColor: '#92400e' },
-  { value: 'work', label: '💼 Trabalho', color: '#e0e7ff', textColor: '#3730a3' },
-  { value: 'health', label: '💪 Saúde', color: '#d1fae5', textColor: '#065f46' },
-  { value: 'evening', label: '🌙 Noite', color: '#ede9fe', textColor: '#5b21b6' },
+  { value: 'morning', label: '🌅 Manhã', color: '#fef3c7', textColor: '#92400e', icon: '🌅' },
+  { value: 'work',    label: '💼 Trabalho', color: '#e0e7ff', textColor: '#3730a3', icon: '💼' },
+  { value: 'health',  label: '💪 Saúde', color: '#d1fae5', textColor: '#065f46', icon: '💪' },
+  { value: 'evening', label: '🌙 Noite', color: '#ede9fe', textColor: '#5b21b6', icon: '🌙' },
 ]
 
 type RoutineForm = {
@@ -28,12 +28,35 @@ const EMPTY_ROUTINE: RoutineForm = {
   title: '', time: '', days: DAYS_FULL, category: 'morning', completed_today: false
 }
 
+type View = 'list' | 'form'
+
+function getXP(completed: number, total: number) {
+  if (total === 0) return 0
+  return Math.round((completed / total) * 100)
+}
+
+function getStreakEmoji(streak: number) {
+  if (streak >= 30) return '🏆'
+  if (streak >= 14) return '⚡'
+  if (streak >= 7) return '🔥'
+  if (streak >= 3) return '✨'
+  return '💫'
+}
+
+function getLevelInfo(xp: number) {
+  if (xp >= 90) return { label: 'Mestre', color: '#f59e0b', next: 100 }
+  if (xp >= 70) return { label: 'Avançado', color: '#5a825a', next: 90 }
+  if (xp >= 40) return { label: 'Intermediário', color: '#4a6fa5', next: 70 }
+  return { label: 'Iniciante', color: '#9ca3af', next: 40 }
+}
+
 export default function RoutinePage() {
   const [routines, setRoutines] = useState<Routine[]>([])
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState<Routine | null>(null)
   const [form, setForm] = useState<RoutineForm>({ ...EMPTY_ROUTINE })
   const [saving, setSaving] = useState(false)
+  const [streak] = useState(3) // TODO: calcular streak real do Supabase
   const todayDow = new Date().getDay()
   const todayName = DAYS_FULL[todayDow]
 
@@ -78,6 +101,7 @@ export default function RoutinePage() {
   function closeForm() {
     setShowForm(false)
     setSelected(null)
+    setForm({ ...EMPTY_ROUTINE })
   }
 
   function toggleDay(d: string) {
@@ -90,6 +114,10 @@ export default function RoutinePage() {
   const todayRoutines = routines.filter(r => r.days.includes(todayName))
   const otherRoutines = routines.filter(r => !r.days.includes(todayName))
   const completed = todayRoutines.filter(r => r.completed_today).length
+  const total = todayRoutines.length
+  const xp = getXP(completed, total)
+  const level = getLevelInfo(xp)
+  const allDone = total > 0 && completed === total
 
   return (
     <div className="h-full flex flex-col">
@@ -107,18 +135,32 @@ export default function RoutinePage() {
           </button>
         </div>
 
-        {/* Progress */}
-        {todayRoutines.length > 0 && (
-          <div className="card p-3 mb-3">
+        {/* Gamification bar */}
+        {total > 0 && (
+          <div className="card p-4 mb-3" style={{ background: allDone ? 'linear-gradient(135deg, #5a825a, #3d5e3d)' : 'white' }}>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold">Progresso de hoje</span>
-              <span className="text-sm font-bold" style={{ color: 'var(--accent)' }}>{completed}/{todayRoutines.length}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{allDone ? '🎉' : getStreakEmoji(streak)}</span>
+                <div>
+                  <p className="text-sm font-bold" style={{ color: allDone ? 'white' : 'var(--text-primary)' }}>
+                    {allDone ? 'Rotina completa!' : `${level.label}`}
+                  </p>
+                  <p className="text-xs" style={{ color: allDone ? 'rgba(255,255,255,0.7)' : 'var(--text-secondary)' }}>
+                    {streak} dias seguidos 🔥
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="text-lg font-bold" style={{ color: allDone ? 'white' : level.color }}>{completed}/{total}</p>
+                <p className="text-xs" style={{ color: allDone ? 'rgba(255,255,255,0.7)' : 'var(--text-secondary)' }}>tarefas</p>
+              </div>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--accent-light)' }}>
-              <div className="h-full rounded-full transition-smooth" style={{ background: 'var(--accent)', width: `${todayRoutines.length ? (completed / todayRoutines.length) * 100 : 0}%` }} />
+            <div className="h-2 rounded-full overflow-hidden" style={{ background: allDone ? 'rgba(255,255,255,0.2)' : 'var(--accent-light)' }}>
+              <div className="h-full rounded-full transition-all duration-500"
+                style={{ background: allDone ? 'white' : level.color, width: `${total ? (completed / total) * 100 : 0}%` }} />
             </div>
-            {completed === todayRoutines.length && todayRoutines.length > 0 && (
-              <p className="text-xs mt-2 text-center font-medium" style={{ color: 'var(--accent)' }}>🎉 Rotina completa!</p>
+            {!allDone && (
+              <p className="text-xs mt-1.5 text-right" style={{ color: 'var(--text-secondary)' }}>{xp} XP hoje</p>
             )}
           </div>
         )}
@@ -137,25 +179,29 @@ export default function RoutinePage() {
             {todayRoutines.length > 0 && (
               <>
                 <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>Para hoje</p>
-                <div className="space-y-2 mb-4">
-                  {CATEGORIES.map(cat => {
-                    const items = todayRoutines.filter(r => r.category === cat.value)
-                    if (!items.length) return null
-                    return (
-                      <div key={cat.value}>
-                        <p className="text-xs font-medium mb-1.5 mt-3" style={{ color: 'var(--text-secondary)' }}>{cat.label}</p>
+                {CATEGORIES.map(cat => {
+                  const items = todayRoutines.filter(r => r.category === cat.value)
+                  if (!items.length) return null
+                  return (
+                    <div key={cat.value} className="mb-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm">{cat.icon}</span>
+                        <p className="text-xs font-semibold" style={{ color: cat.textColor }}>{cat.label.split(' ').slice(1).join(' ')}</p>
+                      </div>
+                      <div className="space-y-2">
                         {items.map(r => (
                           <RoutineItem key={r.id} routine={r} onToggle={toggleComplete} onEdit={openEdit} catColor={cat.color} catText={cat.textColor} />
                         ))}
                       </div>
-                    )
-                  })}
-                </div>
+                    </div>
+                  )
+                })}
               </>
             )}
+
             {otherRoutines.length > 0 && (
               <>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>Outras rotinas</p>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2 mt-2" style={{ color: 'var(--text-secondary)' }}>Outras rotinas</p>
                 <div className="space-y-2">
                   {otherRoutines.map(r => {
                     const cat = CATEGORIES.find(c => c.value === r.category)!
@@ -168,6 +214,7 @@ export default function RoutinePage() {
         )}
       </div>
 
+      {/* Form sheet */}
       {showForm && (
         <>
           <div className="overlay" onClick={closeForm} />
@@ -201,10 +248,10 @@ export default function RoutinePage() {
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase tracking-wide mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>Dias da semana</label>
-                <div className="flex gap-2 justify-between">
+                <div className="flex gap-1.5 justify-between">
                   {DAYS.map((d, i) => (
                     <button key={d} onClick={() => toggleDay(DAYS_FULL[i])}
-                      className="w-10 h-10 rounded-xl text-xs font-semibold press-effect"
+                      className="flex-1 h-10 rounded-xl text-xs font-semibold press-effect"
                       style={{ background: form.days.includes(DAYS_FULL[i]) ? 'var(--accent)' : '#f5f5f7', color: form.days.includes(DAYS_FULL[i]) ? 'white' : 'var(--text-secondary)' }}>
                       {d}
                     </button>
@@ -232,27 +279,39 @@ export default function RoutinePage() {
 }
 
 function RoutineItem({ routine, onToggle, onEdit, catColor, catText }: {
-  routine: Routine; onToggle: (r: Routine) => void; onEdit: (r: Routine) => void; catColor?: string; catText?: string
+  routine: Routine
+  onToggle: (r: Routine) => void
+  onEdit: (r: Routine) => void
+  catColor?: string
+  catText?: string
 }) {
   return (
-    <div className="card flex items-center gap-3 p-3.5 mb-2">
+    <div className="card flex items-center gap-3 p-3.5 mb-1"
+      style={{ borderLeft: routine.completed_today ? `3px solid var(--accent)` : '3px solid transparent' }}>
       <button onClick={() => onToggle(routine)}
-        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center press-effect border-2 transition-smooth"
+        className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center press-effect border-2 transition-all duration-200"
         style={{
           background: routine.completed_today ? 'var(--accent)' : 'transparent',
-          borderColor: routine.completed_today ? 'var(--accent)' : '#d1d5db'
+          borderColor: routine.completed_today ? 'var(--accent)' : '#d1d5db',
+          transform: routine.completed_today ? 'scale(1.1)' : 'scale(1)'
         }}>
         {routine.completed_today && <Check size={14} color="white" strokeWidth={3} />}
       </button>
       <div className="flex-1 min-w-0" onClick={() => onEdit(routine)}>
-        <p className="text-sm font-medium" style={{ textDecoration: routine.completed_today ? 'line-through' : 'none', color: routine.completed_today ? '#9ca3af' : 'var(--text-primary)' }}>
+        <p className="text-sm font-medium" style={{
+          textDecoration: routine.completed_today ? 'line-through' : 'none',
+          color: routine.completed_today ? '#9ca3af' : 'var(--text-primary)'
+        }}>
           {routine.title}
         </p>
         {routine.time && <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{routine.time}</p>}
       </div>
-      <span className="text-[10px] font-medium flex-shrink-0 px-2 py-1 rounded-lg" style={{ background: catColor || '#f5f5f7', color: catText || 'var(--text-secondary)' }}>
-        {routine.days.length === 7 ? 'Todo dia' : `${routine.days.length}x/sem`}
-      </span>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {routine.completed_today && <span className="text-sm">⭐</span>}
+        <span className="text-[10px] font-medium px-2 py-1 rounded-lg" style={{ background: catColor || '#f5f5f7', color: catText || 'var(--text-secondary)' }}>
+          {routine.days.length === 7 ? 'Todo dia' : `${routine.days.length}x/sem`}
+        </span>
+      </div>
     </div>
   )
 }
